@@ -44,15 +44,25 @@ def detect_silence(video_path: str, noise_db: float = -40, min_silence: float = 
     # silence 구간의 역(= 발화 구간) 계산
     keep: list[Segment] = []
     cursor = 0.0
+    last_speech_end = 0.0  # 마지막 발화가 끝난 시점 (= 마지막 silence_start)
 
     for s_start, s_end in zip(starts, ends):
         if s_start > cursor + 0.05:
             tail_end = min(s_start + 30.0, s_end)
             keep.append(Segment(start=round(cursor, 3), end=round(tail_end, 3)))
+            last_speech_end = s_start
         cursor = s_end
 
     if total > cursor + 0.05:
         keep.append(Segment(start=round(cursor, 3), end=round(total, 3)))
+        last_speech_end = cursor  # silence 없이 끝난 경우
+
+    # 마지막 클립: 발화 종료 후 최소 30초 보장 (숨소리·마무리 구간 포함)
+    if keep and last_speech_end > 0:
+        min_end = min(last_speech_end + 30.0, total)
+        last = keep[-1]
+        if last.end < min_end:
+            keep[-1] = Segment(start=last.start, end=round(min_end, 3), text=last.text)
 
     return keep
 
