@@ -1,6 +1,5 @@
 """
-번역 — Claude API 기반 컨텍스트 인식 번역 (fallback: Google Translate)
-전체 세그먼트를 한 번에 전달해 발음 불명확·전사 오류를 문맥으로 교정한 뒤 번역
+번역 — DeepL API 무료 버전 기반 번역 (fallback: Google Translate)
 """
 import json
 import os
@@ -8,7 +7,7 @@ import re
 import warnings
 warnings.filterwarnings("ignore")
 
-from deep_translator import GoogleTranslator
+from deep_translator import GoogleTranslator, DeeplTranslator
 
 _CONCISE_RULES = [
     (r"당신의\s*", ""),
@@ -30,55 +29,26 @@ def _make_concise(text: str) -> str:
     return out.strip()
 
 
-def _translate_with_claude(segments: list[dict]):
+def _translate_with_deepl(text: str, target: str = "ko", source: str = "auto") -> str:
     """
-    Claude에게 전체 세그먼트를 한 번에 전달.
-    문맥과 어긋나는 발음 오류를 교정한 뒤 한국어로 번역.
-    반환값: {세그먼트 인덱스: 번역문} 또는 None(실패 시)
+    DeepL 무료 API로 번역. DEEPL_API_KEY 환경변수 필요.
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = os.environ.get("DEEPL_API_KEY", "")
     if not api_key:
         return None
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
+        # DeepL 언어 코드 변환 (ko → KO, auto → auto)
+        target_lang = target.upper() if target != "auto" else "KO"
+        source_lang = source.upper() if source != "auto" else None
 
-        seg_list = [
-            {"id": i, "text": s.get("text", "").strip()}
-            for i, s in enumerate(segments)
-            if s.get("text", "").strip()
-        ]
-        if not seg_list:
-            return {}
-
-        prompt = f"""아래는 영상 자동 전사(ASR) 세그먼트 목록입니다.
-각 세그먼트를 한국어 자막으로 번역하되, 다음 규칙을 따르세요.
-
-규칙:
-1. 전체 문맥을 먼저 파악하세요.
-2. 발음 불명확·전사 오류로 의심되는 단어는 앞뒤 문맥에서 올바른 표현을 유추해 교정한 뒤 번역하세요.
-3. 자막이므로 간결하게 작성하세요 (한 줄 18자 이하 권장).
-4. 결과는 JSON 배열만 출력하세요. 다른 설명은 불필요합니다.
-   형식: [{{"id": 0, "translated": "번역문"}}, ...]
-
-세그먼트:
-{json.dumps(seg_list, ensure_ascii=False, indent=2)}"""
-
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=4096,
-            messages=[{"role": "user", "content": prompt}],
+        translator = DeeplTranslator(
+            api_key=api_key,
+            source=source_lang or "auto",
+            target=target_lang,
+            use_free_api=True  # 무료 API 사용
         )
-
-        raw = message.content[0].text.strip()
-        match = re.search(r"\[.*\]", raw, re.DOTALL)
-        if not match:
-            return None
-
-        items = json.loads(match.group())
-        return {item["id"]: item["translated"] for item in items}
-
+        return translator.translate(text)
     except Exception:
         return None
 
@@ -95,23 +65,21 @@ def translate_segments(segments: list[dict], target: str = "ko", source: str = "
                        concise: bool = True) -> list[dict]:
     """
     각 세그먼트의 text를 번역해 'text_translated' 필드에 저장.
-    Claude API 가능 시 전체 문맥 인식 번역, 불가 시 Google Translate 폴백.
+    우선순위: DeepL API → Google Translate (폴백)
     """
-    # Claude로 전체 일괄 번역 시도
-    claude_map = _translate_with_claude(segments)
-
     result = []
-    for i, seg in enumerate(segments):
+    for seg in segments:
         text = seg.get("text", "").strip()
 
         if not text:
             result.append({**seg, "text_translated": text})
             continue
 
-        if claude_map is not None:
-            translated = claude_map.get(i, text)
-        else:
-            # 폴백: Google Translate 개별 번역
+        # DeepL 먼저 시도
+        translated = _translate_with_deepl(text, target, source)
+
+        # 실패 시 Google Translate 폴백
+        if not translated:
             translated = _translate_with_google(text, target, source)
 
         if concise:

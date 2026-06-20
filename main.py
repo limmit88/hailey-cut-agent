@@ -421,7 +421,7 @@ async def _process(job_id: str, video_path: str, q: asyncio.Queue):
         pass
 
 
-def _merge_asr(silence_segs, asr_segs) -> list[dict]:
+def _merge_asr(silence_segs, asr_segs, tail_buffer: float = 1.0) -> list[dict]:
     """
     편집 단위 = ASR 문장 세그먼트.
     각 ASR 세그먼트가 발화 구간(silence_segs) 안에 실제로 걸쳐 있는 것만 채택.
@@ -454,6 +454,16 @@ def _merge_asr(silence_segs, asr_segs) -> list[dict]:
         for ss in silence_segs:
             units.append({"start": ss.start, "end": ss.end, "text": "",
                           "action": "keep", "reason": ""})
+
+    # 각 컷 끝에 여유 시간 추가 (다음 컷 시작을 넘지 않도록)
+    for i, unit in enumerate(units):
+        if i + 1 < len(units):
+            next_start = units[i + 1]["start"]
+            max_end = next_start  # 다음 컷 시작 직전까지만
+        else:
+            max_end = unit["end"] + tail_buffer  # 마지막 컷은 제한 없음
+        unit["end"] = round(min(unit["end"] + tail_buffer, max_end), 3)
+
     return units
 
 
