@@ -314,23 +314,24 @@ async def _process(job_id: str, video_path: str, q: asyncio.Queue):
         os.rename(video_path, final_video)
         video_path = final_video
 
-        # ── 1. silence_detect ─────────────────────────────
-        await emit("step", step="silence", label="무음 구간 탐지 중…", progress=10)
+        # ── 1. 영상 메타데이터 ─────────────────────────────
+        await emit("step", step="silence", label="영상 분석 중…", progress=10)
         fps      = get_video_fps(video_path)
         duration = get_video_duration(video_path)
         width, height = get_video_dimensions(video_path)
-        segments = detect_silence(video_path)
-        await emit("step", step="silence", label=f"무음 제거 완료 — {len(segments)}개 발화 구간", progress=25,
-                   stats={"segments": len(segments), "fps": fps, "duration": round(duration, 1)})
+        await emit("step", step="silence", label=f"영상 분석 완료", progress=20,
+                   stats={"fps": fps, "duration": round(duration, 1)})
 
-        # ── 2. ASR ────────────────────────────────────────
-        await emit("step", step="asr", label="Whisper 전사 중… (최초 실행 시 모델 다운로드)", progress=30)
+        # ── 2. ASR (발화 구간 + 텍스트 동시 추출) ──────────
+        await emit("step", step="asr", label="Whisper 전사 중… (최초 실행 시 모델 다운로드)", progress=25)
         asr = await transcribe(video_path)
         full_script = asr["text"]
         asr_segs    = asr["segments"]
 
-        # silence 세그먼트에 ASR 텍스트 병합
-        merged = _merge_asr(segments, asr_segs)
+        # ASR 타임스탬프 기준 발화 구간 생성 (5초 이상 침묵만 컷)
+        merged = _merge_asr([], asr_segs, gap_threshold=5.0)
+        await emit("step", step="silence", label=f"발화 구간 감지 완료 — {len(merged)}개 구간", progress=30,
+                   stats={"segments": len(merged), "fps": fps, "duration": round(duration, 1)})
 
         # 말 더듬음 트림 (단어 타임스탬프 기반)
         before = len(merged)
@@ -421,39 +422,55 @@ async def _process(job_id: str, video_path: str, q: asyncio.Queue):
         pass
 
 
-def _merge_asr(silence_segs, asr_segs) -> list[dict]:
+def _merge_asr(silence_segs, asr_segs, gap_threshold: float = 5.0) -> list[dict]:
     """
-    편집 단위 = ASR 문장 세그먼트.
-    각 ASR 세그먼트가 발화 구간(silence_segs) 안에 실제로 걸쳐 있는 것만 채택.
-    (정정/NG 판정은 문장 단위 granularity가 필요하므로 silence 덩어리가 아닌 ASR을 단위로 씀)
+    ASR 타임스탬프 기준 발화 구간 생성 (ffmpeg 무음 감지 대신 Whisper 사용).
+    - ASR 세그먼트의 start/end를 그대로 사용
+    - 인접 세그먼트 간 gap이 gap_threshold 초 이하면 하나로 병합
+    - gap이 gap_threshold 초 초과면 컷 포인트
     """
+    if not asr_segs:
+        # ASR이 비어 있으면 silence 구간으로 폴백 (자막 없는 점프컷)
+        return [{"start": ss.start, "end": ss.end, "text": "",
+                 "action": "keep", "reason": ""} for ss in silence_segs]
+
+    # ASR 세그먼트를 시간순 정렬
+    sorted_segs = sorted(asr_segs, key=lambda a: a["start"])
+
     units = []
-    for a in asr_segs:
+    current = None
+
+    for a in sorted_segs:
         text = a.get("text", "").strip()
         if not text:
             continue
-        # 발화 구간과 겹치는지 확인 (무음에 통째로 묻힌 환청 세그먼트 제외)
-        if silence_segs:
-            overlaps = any(
-                min(ss.end, a["end"]) - max(ss.start, a["start"]) > 0.1
-                for ss in silence_segs
-            )
-            if not overlaps:
-                continue
-        units.append({
+
+        seg = {
             "start": round(a["start"], 3),
             "end": round(a["end"], 3),
             "text": text,
-            "words": a.get("words", []),   # 더듬음 트림용
+            "words": a.get("words", []),
             "action": "keep",
             "reason": "",
-        })
+        }
 
-    # ASR이 비어 있으면 silence 구간으로 폴백 (자막 없는 점프컷)
-    if not units:
-        for ss in silence_segs:
-            units.append({"start": ss.start, "end": ss.end, "text": "",
-                          "action": "keep", "reason": ""})
+        if current is None:
+            current = seg
+        else:
+            gap = seg["start"] - current["end"]
+            if gap <= gap_threshold:
+                # 병합: end 확장, 텍스트 연결
+                current["end"] = seg["end"]
+                current["text"] = current["text"] + " " + seg["text"]
+                current["words"] = current.get("words", []) + seg.get("words", [])
+            else:
+                # 컷 포인트: current 저장하고 새 세그먼트 시작
+                units.append(current)
+                current = seg
+
+    if current:
+        units.append(current)
+
     return units
 
 
