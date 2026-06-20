@@ -20,7 +20,7 @@ class Segment:
     text: str = ""  # ASR 결과 채워짐
 
 
-def detect_silence(video_path: str, noise_db: float = -40, min_silence: float = 0.4) -> list[Segment]:
+def detect_silence(video_path: str, noise_db: float = -40, min_silence: float = 1.5) -> list[Segment]:
     """무음 구간을 제거하고 발화 구간만 반환"""
     cmd = [
         "ffmpeg", "-i", video_path,
