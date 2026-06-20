@@ -214,11 +214,14 @@ def build_fcp7_xml(
 
     seq_dur_elem.text = str(timeline_cursor)
 
-    # ── SRT 생성 (원본 타임코드 기준) ────────────────────
+    # ── SRT 생성 (타임라인 기준 — 갭 제거된 순차 배치와 동기화) ──
     srt_lines = []
     srt_idx = 1
+    srt_cursor = 0.0  # 타임라인 기준 위치
     for seg in keep:
         dur = seg["end"] - seg["start"]
+        if dur <= 0:
+            continue
         # 번역문이 있으면 우선 사용 (한글 자막)
         text = (seg.get("text_translated") or seg.get("text", "")).strip()
         text = " ".join(text.split())
@@ -226,7 +229,7 @@ def build_fcp7_xml(
             # 긴 자막은 한 줄 청크로 분할, 시간은 글자 수 비례 분배
             chunks = _split_caption(text)
             total_chars = sum(len(c) for c in chunks) or 1
-            chunk_cursor = seg["start"]
+            chunk_cursor = srt_cursor  # 타임라인 기준 시작
             for c in chunks:
                 c_dur = dur * (len(c) / total_chars)
                 srt_lines += [
@@ -237,6 +240,7 @@ def build_fcp7_xml(
                 ]
                 srt_idx += 1
                 chunk_cursor += c_dur
+        srt_cursor += dur  # 다음 세그먼트 시작점
 
     # ── 저장 ──────────────────────────────────────────────
     os.makedirs(output_dir, exist_ok=True)
