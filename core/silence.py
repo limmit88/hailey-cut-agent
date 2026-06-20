@@ -1,9 +1,16 @@
 """
 ffmpeg silencedetect → keep_segments (말하는 구간 리스트)
 """
+import os
 import re
 import subprocess
 from dataclasses import dataclass
+
+# LaunchAgent 등 PATH가 제한된 환경에서도 ffmpeg/ffprobe를 찾기 위해
+# Homebrew 기본 경로를 PATH에 추가
+_BREW_PATHS = ["/opt/homebrew/bin", "/usr/local/bin"]
+_env = os.environ.copy()
+_env["PATH"] = ":".join(_BREW_PATHS) + ":" + _env.get("PATH", "")
 
 
 @dataclass
@@ -20,7 +27,7 @@ def detect_silence(video_path: str, noise_db: float = -40, min_silence: float = 
         "-af", f"silencedetect=noise={noise_db}dB:d={min_silence}",
         "-f", "null", "-"
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=_env)
     stderr = result.stderr
 
     # silence_start / silence_end 파싱
@@ -55,7 +62,7 @@ def get_video_fps(video_path: str) -> float:
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=r_frame_rate",
          "-of", "default=noprint_wrappers=1:nokey=1", video_path],
-        capture_output=True, text=True
+        capture_output=True, text=True, env=_env
     )
     raw = result.stdout.strip()
     if "/" in raw:
@@ -68,7 +75,7 @@ def get_video_duration(video_path: str) -> float:
     result = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "default=noprint_wrappers=1:nokey=1", video_path],
-        capture_output=True, text=True
+        capture_output=True, text=True, env=_env
     )
     return float(result.stdout.strip() or "0")
 
@@ -79,7 +86,7 @@ def get_video_dimensions(video_path: str) -> tuple[int, int]:
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height",
          "-of", "csv=s=x:p=0", video_path],
-        capture_output=True, text=True
+        capture_output=True, text=True, env=_env
     )
     raw = result.stdout.strip()
     if "x" in raw:
