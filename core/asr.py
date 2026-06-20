@@ -14,6 +14,11 @@ ASR_LOCK = asyncio.Lock()
 CACHE_DIR = Path(__file__).parent.parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 
+# LaunchAgent 등 PATH가 제한된 환경에서도 ffmpeg를 찾기 위해 Homebrew 경로 추가
+_BREW_PATHS = ["/opt/homebrew/bin", "/usr/local/bin"]
+_env = os.environ.copy()
+_env["PATH"] = ":".join(_BREW_PATHS) + ":" + _env.get("PATH", "")
+
 # 백엔드 선택
 _IS_APPLE = platform.system() == "Darwin" and platform.machine() == "arm64"
 _BACKEND = "mlx"
@@ -50,7 +55,7 @@ def _extract_audio(video_path: str) -> str:
     subprocess.run(
         ["ffmpeg", "-y", "-i", video_path,
          "-ar", "16000", "-ac", "1", "-vn", wav_path],
-        capture_output=True, check=True
+        capture_output=True, check=True, env=_env
     )
     return wav_path
 
