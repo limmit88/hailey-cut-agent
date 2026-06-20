@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hailey Cut Agent</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0a0a;
+    --card:     #161616;
+    --border:   #2a2a2a;
+    --green:    #22c55e;
+    --green-dim:#16a34a;
+    --text:     #e5e5e5;
+    --muted:    #737373;
+    --font:     'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text);
+                font-family: var(--font); font-size: 14px; line-height: 1.5; }
+
+  body { display: flex; flex-direction: column; align-items: center;
+         padding: 48px 16px 80px; gap: 32px; }
+
+  /* ── 헤더 ── */
+  header { text-align: center; }
+  header h1 { font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+  header h1 span { color: var(--green); }
+  header p  { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  /* ── 카드 ── */
+  .card { background: var(--card); border: 1px solid var(--border);
+          border-radius: 10px; padding: 24px; width: 100%; max-width: 680px; }
+
+  /* ── 드롭존 ── */
+  #dropzone {
+    border: 1px dashed var(--border); border-radius: 8px;
+    padding: 40px 24px; text-align: center; cursor: pointer;
+    transition: border-color .2s, background .2s;
+  }
+  #dropzone.over { border-color: var(--green); background: rgba(34,197,94,.04); }
+  #dropzone svg  { color: var(--muted); margin-bottom: 12px; }
+  #dropzone p    { color: var(--muted); font-size: 13px; }
+  #dropzone p strong { color: var(--text); }
+  #file-input { display: none; }
+
+  /* ── 선택된 파일 ── */
+  #file-info { display: none; align-items: center; gap: 12px;
+               background: var(--bg); border: 1px solid var(--border);
+               border-radius: 8px; padding: 14px 16px; margin-top: 16px; }
+  #file-info .name { font-size: 13px; font-weight: 500; flex: 1;
+                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #file-info .size { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  /* ── 버튼 ── */
+  button {
+    background: var(--green); color: #000; border: none; border-radius: 7px;
+    padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background .15s; font-family: var(--font);
+  }
+  button:hover  { background: var(--green-dim); }
+  button:disabled { opacity: .4; cursor: default; }
+  #run-btn { width: 100%; margin-top: 16px; }
+
+  /* ── hr ── */
+  hr { border: none; border-top: 1px solid var(--border); }
+
+  /* ── 진행 스텝 ── */
+  #progress-section { display: none; flex-direction: column; gap: 0; }
+
+  .step-row {
+    display: flex; align-items: flex-start; gap: 14px;
+    padding: 14px 0;
+  }
+  .step-row + .step-row { border-top: 1px solid var(--border); }
+
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0;
+    background: var(--border); transition: background .3s, box-shadow .3s;
+  }
+  .dot.active  { background: var(--green);
+                 box-shadow: 0 0 0 3px rgba(34,197,94,.2), 0 0 8px rgba(34,197,94,.4); }
+  .dot.done    { background: var(--green); box-shadow: none; }
+  .dot.error   { background: #ef4444; }
+
+  .step-body   { flex: 1; min-width: 0; }
+  .step-label  { font-size: 13px; font-weight: 500; }
+  .step-sub    { color: var(--muted); font-size: 12px; margin-top: 2px;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── 통계 그리드 ── */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+                background: var(--border); border-radius: 8px; overflow: hidden;
+                margin-top: 16px; }
+  .stat-cell  { background: var(--bg); padding: 14px 16px; }
+  .stat-val   { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;
+                color: var(--text); }
+  .stat-val.green { color: var(--green); }
+  .stat-key   { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── 대본 ── */
+  .transcript-box {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; font-size: 12px; color: var(--muted); margin-top: 16px;
+    max-height: 120px; overflow-y: auto; line-height: 1.7; white-space: pre-wrap;
+  }
+
+  /* ── 세그먼트 테이블 ── */
+  .seg-table { width: 100%; border-collapse: collapse; font-size: 12px;
+               font-variant-numeric: tabular-nums; margin-top: 12px; }
+  .seg-table th { text-align: left; color: var(--muted); padding: 6px 8px;
+                  border-bottom: 1px solid var(--border); font-weight: 500; }
+  .seg-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .seg-table tr:last-child td { border-bottom: none; }
+  .seg-table tr.cut td { opacity: .45; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 4px;
+           font-size: 11px; font-weight: 600; }
+  .badge.keep { background: rgba(34,197,94,.12); color: var(--green); }
+  .badge.cut  { background: rgba(239,68,68,.12); color: #f87171; }
+  .reason-chip { display: inline-block; background: var(--border); border-radius: 4px;
+                 padding: 1px 6px; font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* ── 다운로드 카드 ── */
+  #result-section { display: none; flex-direction: column; gap: 12px; }
+  .dl-row { display: flex; align-items: center; gap: 12px;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 8px; padding: 14px 16px; }
+  .dl-icon { width: 32px; height: 32px; border-radius: 6px;
+             background: rgba(34,197,94,.1); display: flex; align-items: center;
+             justify-content: center; flex-shrink: 0; }
+  .dl-info { flex: 1; }
+  .dl-info .dl-name { font-size: 13px; font-weight: 500; }
+  .dl-info .dl-desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .dl-btn  { background: var(--card); color: var(--text); border: 1px solid var(--border);
+             padding: 7px 14px; border-radius: 6px; font-size: 12px; }
+  .dl-btn:hover { background: var(--border); }
+
+  .how-to { font-size: 12px; color: var(--muted); line-height: 1.9; }
+  .how-to strong { color: var(--text); }
+  .code-chip { display: inline-block; background: var(--border); border-radius: 4px;
+               padding: 1px 6px; font-family: 'SF Mono', monospace; font-size: 11px;
+               color: var(--text); }
+
+  /* ── 프리뷰 마킹 섹션 ── */
+  #preview-section { display: none; flex-direction: column; gap: 12px; }
+  #video-preview { width: 100%; border-radius: 8px; background: #000;
+                   border: 1px solid var(--border); }
+  .mark-hint { font-size: 12px; color: var(--muted); }
+  .mark-hint .code-chip { margin: 0 2px; }
+
+  /* ── 에러 ── */
+  .error-box { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3);
+               border-radius: 8px; padding: 14px 16px; color: #f87171; font-size: 13px; }
+
+  /* ── 스크롤바 ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Hailey Cut <span>Agent</span></h1>
+  <p>토킹 영상 자동 편집 — 무음 컷 · 잔말 탐지 · 자막 생성</p>
+</header>
+
+<!-- ── 업로드 카드 ── -->
+<div class="card" id="upload-card">
+  <div id="dropzone" tabindex="0"
+       ondragover="onDragOver(event)" ondragleave="onDragLeave(event)"
+       ondrop="onDrop(event)" onclick="document.getElementById('file-input').click()">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+    <p><strong>클릭 또는 드래그</strong>로 영상 업로드</p>
+    <p style="margin-top:4px">mp4 · mov · avi · mkv</p>
+    <input type="file" id="file-input" accept=".mp4,.mov,.avi,.mkv"
+           onchange="onFileSelect(this.files[0])">
+  </div>
+
+  <div id="file-info">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+         stroke="#22c55e" stroke-width="1.5">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+    </svg>
+    <span class="name" id="fname"></span>
+    <span class="size" id="fsize"></span>
+  </div>
+
+  <button id="run-btn" disabled onclick="startJob()">편집 시작</button>
+</div>
+
+<!-- ── 진행 카드 ── -->
+<div class="card" id="progress-card" style="display:none">
+  <div id="progress-section">
+    <div class="step-row" id="sr-silence">
+      <div class="dot" id="dot-silence"></div>
+      <div class="step-body">
+        <div class="step-label" id="lbl-silence">무음 감지 대기</div>
+        <div class="step-sub"  id="sub-silence"></div>
+      </div>
+    </div>
+    <div class="step-row" id="sr-asr">
+      <div class="dot" id="dot-asr"></div>
+      <div class="step-body">
+        <div class="step-label" id="lbl-asr">Whisper 전사 대기</div>
+        <div class="step-sub"  id="sub-asr"></div>
+      </div>
+    </div>
+    <div class="step-row" id="sr-filler">
+      <div class="dot" id="dot-filler"></div>
+      <div class="step-body">
+        <div class="step-label" id="lbl-filler">잔말·NG 탐지 대기</div>
+        <div class="step-sub"  id="sub-filler"></div>
+      </div>
+    </div>
+    <div class="step-row" id="sr-draft">
+      <div class="dot" id="dot-draft"></div>
+      <div class="step-body">
+        <div class="step-label" id="lbl-draft">드래프트 빌드 대기</div>
+        <div class="step-sub"  id="sub-draft"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 세그먼트 결과 (filler 완료 후 표시) -->
+  <div id="seg-area" style="display:none">
+    <hr style="margin:16px 0">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">탐지 결과 — 세그먼트별</div>
+    <div style="overflow-x:auto">
+      <table class="seg-table">
+        <thead>
+          <tr><th>#</th><th>구간</th><th>텍스트</th><th>판정</th></tr>
+        </thead>
+        <tbody id="seg-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── 프리뷰 카드 ── -->
+<div class="card" id="preview-card" style="display:none">
+  <div style="font-size:13px;font-weight:600;margin-bottom:12px">원본 프리뷰</div>
+  <div id="preview-section">
+    <video id="video-preview" controls></video>
+    <div class="mark-hint">
+      <span class="code-chip">[</span> 구간 시작 &nbsp;
+      <span class="code-chip">]</span> 구간 끝 — 보존할 구간 마킹
+      <span style="color:var(--muted);margin-left:8px">(향후 컷 제외)</span>
+    </div>
+    <div id="marks-list" style="font-size:12px;color:var(--muted)"></div>
+  </div>
+</div>
+
+<!-- ── 결과 카드 ── -->
+<div class="card" id="result-card" style="display:none">
+  <div style="font-size:13px;font-weight:600;margin-bottom:16px">편집 완료</div>
+
+  <div id="result-section">
+    <!-- 통계 -->
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <!-- 대본 -->
+    <div style="font-size:12px;color:var(--muted);margin-top:20px;margin-bottom:6px">전체 대본</div>
+    <div class="transcript-box" id="transcript-box"></div>
+
+    <hr style="margin:20px 0">
+
+    <!-- 다운로드 -->
+    <div id="dl-xml" class="dl-row">
+      <div class="dl-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="#22c55e" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </div>
+      <div class="dl-info">
+        <div class="dl-name" id="xml-name"></div>
+        <div class="dl-desc">FCP7 XML — Premiere Pro 파일 → 가져오기</div>
+      </div>
+      <button class="dl-btn" id="xml-btn">다운로드</button>
+    </div>
+
+    <div id="dl-srt" class="dl-row">
+      <div class="dl-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="#22c55e" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <line x1="8" y1="9" x2="16" y2="9"/>
+          <line x1="8" y1="13" x2="14" y2="13"/>
+        </svg>
+      </div>
+      <div class="dl-info">
+        <div class="dl-name" id="srt-name"></div>
+        <div class="dl-desc">SRT 자막 — 파일 → 가져오기 → 캡션으로</div>
+      </div>
+      <button class="dl-btn" id="srt-btn">다운로드</button>
+    </div>
+
+    <hr style="margin:20px 0">
+
+    <!-- 프로젝트 ZIP 다운로드 -->
+    <div id="dl-project" class="dl-row">
+      <div class="dl-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="#22c55e" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </div>
+      <div class="dl-info">
+        <div class="dl-name">프로젝트 전체 다운로드</div>
+        <div class="dl-desc">영상 + XML + SRT 를 ZIP 한 파일로</div>
+      </div>
+      <button class="dl-btn" id="project-btn">다운로드</button>
+    </div>
+
+    <hr style="margin:20px 0">
+
+    <!-- Premiere 자동 열기 버튼 -->
+    <button id="open-btn" onclick="openInPremiere()"
+      style="width:100%;background:var(--green);color:#000;font-size:14px;padding:13px;border-radius:8px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      Premiere Pro에서 열기
+    </button>
+    <div id="open-status" style="font-size:12px;color:var(--muted);margin-top:8px;text-align:center"></div>
+
+    <hr style="margin:20px 0">
+
+    <!-- 사용 방법 -->
+    <div class="how-to">
+      <strong>자동 열기가 안 되면 수동으로:</strong><br>
+      1. <span class="code-chip">파일 → 가져오기</span>에서 <strong>XML 파일</strong> 선택 → 편집 시퀀스 자동 생성<br>
+      2. <span class="code-chip">파일 → 가져오기</span>에서 <strong>SRT 파일</strong> 선택 → 캡션 트랙으로 삽입<br>
+      3. 타임라인에서 <span class="code-chip">재생</span>으로 검증 — AI 컷이 맞는지 사람이 최종 확인
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 상태 ─────────────────────────────────────────────────
+let selectedFile = null;
+let jobId = null;
+let markStart = null;
+let marks = [];
+
+// ── 드래그앤드롭 ──────────────────────────────────────────
+function onDragOver(e)  { e.preventDefault(); document.getElementById('dropzone').classList.add('over'); }
+function onDragLeave(e) { document.getElementById('dropzone').classList.remove('over'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f) onFileSelect(f);
+}
+
+// ── 파일 선택 ─────────────────────────────────────────────
+function onFileSelect(file) {
+  if (!file) return;
+  selectedFile = file;
+  document.getElementById('fname').textContent = file.name;
+  document.getElementById('fsize').textContent = fmtSize(file.size);
+  document.getElementById('file-info').style.display = 'flex';
+  document.getElementById('run-btn').disabled = false;
+}
+
+function fmtSize(b) {
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(1) + ' MB';
+}
+
+// ── 처리 시작 ─────────────────────────────────────────────
+async function startJob() {
+  if (!selectedFile) return;
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('progress-card').style.display = 'block';
+  document.getElementById('progress-section').style.display = 'flex';
+  document.getElementById('result-card').style.display  = 'none';
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+  const res = await fetch('/upload', { method: 'POST', body: fd });
+  const data = await res.json();
+  jobId = data.job_id;
+
+  // 프리뷰 표시
+  const vp = document.getElementById('video-preview');
+  vp.src = URL.createObjectURL(selectedFile);
+  document.getElementById('preview-card').style.display = 'block';
+  document.getElementById('preview-section').style.display = 'flex';
+
+  listenSSE(jobId);
+}
+
+// ── SSE ───────────────────────────────────────────────────
+function listenSSE(id) {
+  const es = new EventSource('/stream/' + id);
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    handleEvent(ev);
+    if (ev.type === 'done' || ev.type === 'error') es.close();
+  };
+}
+
+const STEPS = ['silence','asr','filler','draft'];
+let activeStep = null;
+
+function handleEvent(ev) {
+  if (ev.type === 'step') {
+    const s = ev.step;
+    if (activeStep && activeStep !== s) markDot(activeStep, 'done');
+    markDot(s, 'active');
+    activeStep = s;
+    document.getElementById('lbl-' + s).textContent = ev.label;
+    if (ev.stats) {
+      document.getElementById('sub-' + s).textContent =
+        `세그먼트 ${ev.stats.segments}개 · ${ev.stats.duration}s · ${ev.stats.fps}fps`;
+    }
+    if (ev.transcript) {
+      document.getElementById('sub-asr').textContent = ev.transcript.slice(0,80) + '…';
+    }
+    if (ev.segments) renderSegments(ev.segments);
+  }
+  else if (ev.type === 'done') {
+    STEPS.forEach(s => markDot(s, 'done'));
+    showResult(ev.result, ev.xml, ev.srt);
+  }
+  else if (ev.type === 'error') {
+    if (activeStep) markDot(activeStep, 'error');
+    const area = document.getElementById('seg-area');
+    area.style.display = 'block';
+    area.innerHTML = `<div class="error-box">오류: ${ev.message}</div>`;
+  }
+}
+
+function markDot(step, state) {
+  const d = document.getElementById('dot-' + step);
+  d.className = 'dot ' + state;
+}
+
+// ── 세그먼트 테이블 ───────────────────────────────────────
+function renderSegments(segs) {
+  const area = document.getElementById('seg-area');
+  area.style.display = 'block';
+  const tbody = document.getElementById('seg-tbody');
+  tbody.innerHTML = '';
+  segs.forEach((s, i) => {
+    const tr = document.createElement('tr');
+    if (s.action === 'cut') tr.classList.add('cut');
+    tr.innerHTML = `
+      <td style="color:var(--muted)">${i+1}</td>
+      <td>${fmt(s.start)}–${fmt(s.end)}</td>
+      <td>
+        ${escHtml(s.text || '—')}
+        ${s.reason ? `<br><span class="reason-chip">${escHtml(s.reason)}</span>` : ''}
+      </td>
+      <td><span class="badge ${s.action}">${s.action === 'keep' ? '유지' : '컷'}</span></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function fmt(s) {
+  const m = Math.floor(s/60), sec = (s%60).toFixed(1);
+  return `${m}:${sec.padStart(4,'0')}`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function fmtBytes(b) {
+  if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB';
+  if (b >= 1048576)    return (b / 1048576).toFixed(1) + ' MB';
+  return (b / 1024).toFixed(0) + ' KB';
+}
+
+// ── 결과 표시 ─────────────────────────────────────────────
+function showResult(r, xmlUrl, srtUrl) {
+  document.getElementById('result-card').style.display = 'block';
+  document.getElementById('result-section').style.display = 'flex';
+
+  const st = r.stats;
+  const savings = st.duration_original > 0
+    ? Math.round((1 - st.duration_edited / st.duration_original) * 100) : 0;
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-cell">
+      <div class="stat-val green">${savings}%</div>
+      <div class="stat-key">시간 절약</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-val">${st.keep} <span style="font-size:14px;color:var(--muted)">/ ${st.total_segments}</span></div>
+      <div class="stat-key">유지 세그먼트</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-val">${fmtSec(st.duration_edited)}</div>
+      <div class="stat-key">편집 후 길이</div>
+    </div>`;
+
+  document.getElementById('transcript-box').textContent = st.transcript || '—';
+  const sz = r.sizes || {};
+  document.getElementById('xml-name').textContent = r.xml;
+  document.getElementById('srt-name').textContent = r.srt;
+  if (sz.xml)     document.querySelector('#dl-xml .dl-desc').textContent     = `FCP7 XML — Premiere Pro 파일 → 가져오기 (${fmtBytes(sz.xml)})`;
+  if (sz.srt)     document.querySelector('#dl-srt .dl-desc').textContent     = `SRT 자막 — 파일 → 가져오기 → 캡션으로 (${fmtBytes(sz.srt)})`;
+  if (sz.project) document.querySelector('#dl-project .dl-desc').textContent = `영상 + XML + SRT 를 ZIP 한 파일로 (${fmtBytes(sz.project)})`;
+  document.getElementById('xml-btn').onclick = () => location.href = xmlUrl;
+  document.getElementById('srt-btn').onclick = () => location.href = srtUrl;
+  document.getElementById('project-btn').onclick = () => location.href = `/download-project/${jobId}`;
+
+  document.getElementById('result-card').scrollIntoView({ behavior:'smooth' });
+}
+
+function fmtSec(s) {
+  const m = Math.floor(s/60), sec = Math.round(s%60);
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+// ── [ ] 마킹 단축키 ───────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  const v = document.getElementById('video-preview');
+  if (!v.src || e.target.tagName === 'INPUT') return;
+  if (e.key === '[') {
+    markStart = v.currentTime;
+    showMarkHint(`[${fmt(markStart)} 시작점 마킹`);
+  } else if (e.key === ']' && markStart !== null) {
+    marks.push({ start: markStart, end: v.currentTime });
+    showMarkHint(`보존 구간 추가: ${fmt(markStart)} → ${fmt(v.currentTime)}`);
+    markStart = null;
+    renderMarks();
+  }
+});
+
+function showMarkHint(msg) {
+  document.querySelector('.mark-hint').childNodes[0].textContent = msg + ' ';
+}
+
+function renderMarks() {
+  const el = document.getElementById('marks-list');
+  el.innerHTML = marks.map((m,i) =>
+    `<span style="margin-right:12px">#${i+1} ${fmt(m.start)}–${fmt(m.end)}</span>`
+  ).join('');
+}
+
+// ── 서버 모드 감지 → Premiere 기능 숨김 ─────────────────────
+fetch('/config').then(r=>r.json()).then(cfg=>{
+  if(!cfg.local_mode){
+    document.getElementById('open-btn').style.display  = 'none';
+    document.getElementById('open-status').style.display = 'none';
+    document.querySelectorAll('hr').forEach((hr,i)=>{if(i===1)hr.style.display='none';});
+  }
+}).catch(()=>{});
+
+// ── Premiere Pro 자동 열기 ────────────────────────────────
+async function openInPremiere() {
+  if (!jobId) return;
+  const btn = document.getElementById('open-btn');
+  const status = document.getElementById('open-status');
+  btn.disabled = true;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Premiere Pro 실행 중…';
+  status.textContent = '잠시 기다려주세요 (5~10초)';
+  try {
+    const res = await fetch(`/open/${jobId}`, { method: 'POST' });
+    const data = await res.json();
+    if (res.ok) {
+      btn.innerHTML = '✓ Premiere Pro 열림 — 타임라인을 확인하세요';
+      btn.style.background = '#166534';
+      status.textContent = '프로젝트가 자동으로 생성되었습니다.';
+    } else {
+      throw new Error(data.detail || '오류');
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Premiere Pro에서 열기';
+    status.textContent = '오류: ' + e.message + ' — 영상을 다시 업로드해 주세요';
+    status.style.color = '#f87171';
+  }
+}
+</script>
+</body>
+</html>

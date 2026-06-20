@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: hailey-cut-agent
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: ACCESS_TOKEN
+        sync: false          # Render 대시보드에서 직접 입력
+      - key: ANTHROPIC_API_KEY
+        sync: false          # 선택 사항 — 없으면 Google Translate 사용
+      - key: WHISPER_MODEL
+        value: base
+      - key: MAX_UPLOAD_MB
+        value: "500"
+    disk:
+      name: hca-data
+      mountPath: /app/outputs
+      sizeGB: 10
