@@ -9,5 +9,7 @@ uploads/
 outputs/
 cache/
 
-# 로그
+# 로그 및 서버 상태
+logs/
 *.log
+.server.pid

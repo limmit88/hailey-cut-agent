@@ -1,57 +1,43 @@
 #!/bin/bash
-# 이 파일을 더블클릭하면 Hailey Cut Agent가 실행됩니다
+# 이 파일을 더블클릭하면 백그라운드에서 서버가 실행되고 브라우저가 열립니다
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-G='\033[0;32m'; Y='\033[1;33m'; R='\033[0;31m'; B='\033[1;34m'; N='\033[0m'
-
 # ── 설치 여부 확인 ────────────────────────────────────────
 if [ ! -d ".venv" ]; then
-    echo -e "${R}❌ 먼저 setup.command 를 실행해 주세요${N}"
-    read -p "   Enter 를 눌러 창을 닫으세요…" _
+    osascript -e 'display alert "먼저 setup.command를 실행해 주세요" as critical'
     exit 1
 fi
 
-# ── 이미 실행 중인지 확인 ─────────────────────────────────
+# ── 이미 실행 중이면 브라우저만 열기 ─────────────────────
 if lsof -ti:8000 &>/dev/null; then
-    echo -e "${G}✅ Hailey Cut Agent 가 이미 실행 중이에요${N}"
-    echo    "   브라우저를 열게요…"
     open http://localhost:8000
+    # 터미널 창 닫기
+    osascript -e 'tell application "Terminal" to close front window' 2>/dev/null
     exit 0
 fi
 
+# ── 가상환경 활성화 ───────────────────────────────────────
 source .venv/bin/activate
 
-echo ""
-echo -e "${B}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}"
-echo -e "${B}   🎬  Hailey Cut Agent  시작 중…          ${N}"
-echo -e "${B}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}"
-echo ""
+# ── 백그라운드로 서버 시작 ────────────────────────────────
+mkdir -p logs
+nohup python3 main.py > logs/server.log 2>&1 &
+echo $! > .server.pid
+disown
 
-# ── 서버 실행 ─────────────────────────────────────────────
-python3 main.py &
-SERVER_PID=$!
-
-# 서버 준비 대기 (최대 15초)
-echo -n "   서버 준비 중"
+# ── 서버 준비 대기 (최대 15초) ───────────────────────────
 for i in $(seq 1 30); do
     sleep 0.5
     if curl -s http://localhost:8000 &>/dev/null; then
-        echo ""
         break
     fi
-    echo -n "."
 done
 
 # ── 브라우저 열기 ─────────────────────────────────────────
 open http://localhost:8000
 
-echo -e "${G}   ✅ 브라우저에서 열렸습니다 → http://localhost:8000${N}"
-echo ""
-echo    "   ⛔  종료하려면 이 창을 닫으세요"
-echo ""
-
-# 서버 유지 (창 닫으면 같이 종료)
-trap "kill $SERVER_PID 2>/dev/null; echo ''; echo '서버가 종료됐습니다.'" EXIT
-wait $SERVER_PID
+# ── 터미널 창 자동 닫기 ───────────────────────────────────
+sleep 0.5
+osascript -e 'tell application "Terminal" to close front window' 2>/dev/null
