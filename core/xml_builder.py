@@ -121,10 +121,8 @@ def build_fcp7_xml(
     xmeml = ET.Element("xmeml", version="5")
     sequence = ET.SubElement(xmeml, "sequence", id="sequence-1")
     ET.SubElement(sequence, "name").text = sequence_name
-    seq_duration = _frames(total_duration, fps) if total_duration > 0 else _frames(
-        max(s["end"] for s in keep), fps
-    )
-    ET.SubElement(sequence, "duration").text = str(seq_duration)
+    # 시퀀스 duration은 클립 배치 후 결정 (아래에서 채움)
+    seq_dur_elem = ET.SubElement(sequence, "duration")
     add_rate(sequence)
 
     media = ET.SubElement(sequence, "media")
@@ -165,27 +163,30 @@ def build_fcp7_xml(
         ET.SubElement(fa, "channelcount").text = "2"
 
     first = True
+    timeline_cursor = 0  # 타임라인 배치 위치 (갭 없이 순차)
     for idx, seg in enumerate(keep):
-        clip_in  = _frames(seg["start"], fps)
-        clip_out = _frames(seg["end"],   fps)
+        clip_in  = _frames(seg["start"], fps)  # 소스 in  (원본 타임코드)
+        clip_out = _frames(seg["end"],   fps)  # 소스 out (원본 타임코드)
         duration = clip_out - clip_in
         if duration <= 0:
             continue
 
-        # 비디오 clipitem — 원본 타임코드 위치 그대로 배치 (갭 유지)
+        tl_start = timeline_cursor
+        tl_end   = timeline_cursor + duration
+
+        # 비디오 clipitem
         ci = ET.SubElement(v_track, "clipitem", id=f"clipitem-v{idx}")
         ET.SubElement(ci, "name").text = stem
         ET.SubElement(ci, "duration").text = str(duration)
         add_rate(ci)
-        ET.SubElement(ci, "start").text = str(clip_in)
-        ET.SubElement(ci, "end").text   = str(clip_out)
-        ET.SubElement(ci, "in").text    = str(clip_in)
+        ET.SubElement(ci, "start").text = str(tl_start)   # 타임라인 위치 (갭 없음)
+        ET.SubElement(ci, "end").text   = str(tl_end)
+        ET.SubElement(ci, "in").text    = str(clip_in)    # 소스 원본 타임코드
         ET.SubElement(ci, "out").text   = str(clip_out)
         if first:
             make_file_elem(ci)
         else:
             ET.SubElement(ci, "file", id=file_id)
-        # 비디오-오디오 링크
         for ltype, lref in (("video", f"clipitem-v{idx}"), ("audio", f"clipitem-a{idx}")):
             link = ET.SubElement(ci, "link")
             ET.SubElement(link, "linkclipref").text = lref
@@ -196,8 +197,8 @@ def build_fcp7_xml(
         ET.SubElement(ai, "name").text = stem
         ET.SubElement(ai, "duration").text = str(duration)
         add_rate(ai)
-        ET.SubElement(ai, "start").text = str(clip_in)
-        ET.SubElement(ai, "end").text   = str(clip_out)
+        ET.SubElement(ai, "start").text = str(tl_start)
+        ET.SubElement(ai, "end").text   = str(tl_end)
         ET.SubElement(ai, "in").text    = str(clip_in)
         ET.SubElement(ai, "out").text   = str(clip_out)
         ET.SubElement(ai, "file", id=file_id)
@@ -208,7 +209,10 @@ def build_fcp7_xml(
             ET.SubElement(link, "linkclipref").text = lref
             ET.SubElement(link, "mediatype").text = ltype
 
+        timeline_cursor = tl_end
         first = False
+
+    seq_dur_elem.text = str(timeline_cursor)
 
     # ── SRT 생성 (원본 타임코드 기준) ────────────────────
     srt_lines = []

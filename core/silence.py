@@ -47,7 +47,7 @@ def detect_silence(video_path: str, noise_db: float = -40, min_silence: float = 
 
     for s_start, s_end in zip(starts, ends):
         if s_start > cursor + 0.05:
-            tail_end = min(s_start + 1.0, s_end)
+            tail_end = min(s_start + 30.0, s_end)
             keep.append(Segment(start=round(cursor, 3), end=round(tail_end, 3)))
         cursor = s_end
 
